@@ -452,7 +452,7 @@ func (fm *FrameMgr) combineWindowToRecvBuffer(cur int64) {
 		//loggo.Debug("debugid %v start add req id %v %v %v", fm.debugid, fm.recvid, f.Id, id)
 		if f.Id != id {
 			oldReq := fm.reqmap[f.Id]
-			if cur-oldReq > fm.rttns {
+			if cur-oldReq > fm.rttns/2 {
 				reqtmp[id]++
 				fm.reqmap[f.Id] = cur
 				//loggo.Debug("debugid %v add req id %v ", fm.debugid, id)

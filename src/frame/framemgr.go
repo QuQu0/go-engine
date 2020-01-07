@@ -413,9 +413,8 @@ func (fm *FrameMgr) combineWindowToRecvBuffer(cur int64) {
 
 	for {
 		done := false
-		unboundIterator := fm.recvwin.Iterator()
-		for unboundIterator.Next() {
-			f := unboundIterator.Value().(*Frame)
+		for e := fm.recvwin.Front(); e != nil; e = e.Next() {
+			f := e.Value().(*Frame)
 			if f.Id == fm.recvid {
 				delete(fm.reqmap, f.Id)
 				if fm.processRecvFrame(f) {
@@ -438,10 +437,7 @@ func (fm *FrameMgr) combineWindowToRecvBuffer(cur int64) {
 	}
 
 	reqtmp := make(map[int32]int)
-	e := fm.recvwin.Iterator()
-	if !e.Next() {
-		e = nil
-	}
+	e := fm.recvwin.Front()
 	id := fm.recvid
 	for len(reqtmp) < int(fm.windowsize) && len(reqtmp)*4 < fm.frame_max_size/2 && e != nil {
 		f := e.Value().(*Frame)
@@ -454,9 +450,7 @@ func (fm *FrameMgr) combineWindowToRecvBuffer(cur int64) {
 				//loggo.Debug("debugid %v add req id %v ", fm.debugid, id)
 			}
 		} else {
-			if !e.Next() {
-				e = nil
-			}
+			e = e.Next()
 		}
 
 		id++

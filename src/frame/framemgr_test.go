@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"fmt"
 	"github.com/esrrhs/go-engine/src/common"
+	"github.com/esrrhs/go-engine/src/skiplist"
 	"testing"
 	"time"
 )
@@ -101,6 +102,6 @@ func Test0001(t *testing.T) {
 	fm.openstat = 1
 	fm.resetStat()
 	fm.sendwin = list.New()
-	fm.recvwin = list.New()
+	fm.recvwin = skiplist.NewInt32Map()
 	fm.printStat(time.Now().UnixNano())
 }

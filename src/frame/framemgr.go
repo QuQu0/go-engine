@@ -5,6 +5,7 @@ import (
 	"github.com/esrrhs/go-engine/src/common"
 	"github.com/esrrhs/go-engine/src/loggo"
 	"github.com/esrrhs/go-engine/src/rbuffergo"
+	"github.com/esrrhs/go-engine/src/skiplist"
 	"github.com/golang/protobuf/proto"
 	"strconv"
 	"sync"
@@ -48,7 +49,7 @@ type FrameMgr struct {
 	sendlist *list.List
 	sendid   int32
 
-	recvwin  *list.List
+	recvwin  *skiplist.SkipList
 	recvlist *list.List
 	recvid   int32
 
@@ -89,13 +90,18 @@ func NewFrameMgr(frame_max_size int, frame_max_id int, buffersize int, windowsiz
 		recvlock:   &sync.Mutex{},
 		windowsize: int32(windowsize), resend_timems: resend_timems, compress: compress,
 		sendwin: list.New(), sendlist: list.New(), sendid: 0,
-		recvwin: list.New(), recvlist: list.New(), recvid: 0,
+		recvlist: list.New(), recvid: 0,
 		close: false, remoteclosed: false, closesend: false,
 		lastPingTime: time.Now().UnixNano(), lastPongTime: time.Now().UnixNano(),
 		lastSendHBTime: time.Now().UnixNano(), lastRecvHBTime: time.Now().UnixNano(),
 		rttns:     (int64)(resend_timems * 1000),
 		reqmap:    make(map[int32]int64),
 		connected: false, openstat: openstat, lastPrintStat: time.Now().UnixNano()}
+
+	fm.recvwin = skiplist.NewCustomMap(func(l, r interface{}) bool {
+		return fm.compareId(l.(int32), r.(int32)) < 0
+	})
+
 	if openstat > 0 {
 		fm.resetStat()
 	}
@@ -349,22 +355,8 @@ func (fm *FrameMgr) addToRecvWin(rf *Frame) bool {
 		return false
 	}
 
-	for e := fm.recvwin.Front(); e != nil; e = e.Next() {
-		f := e.Value.(*Frame)
-		if f.Id == rf.Id {
-			//loggo.Debug("debugid %v recv frame ignore %v %v", fm.debugid, f.Id, len(f.Data.Data))
-			return true
-		}
-		//loggo.Debug("debugid %v start insert recv win %v %v %v", fm.debugid, fm.recvid, rf.Id, f.Id)
-		if fm.compareId(rf.Id, f.Id) < 0 {
-			fm.recvwin.InsertBefore(rf, e)
-			//loggo.Debug("debugid %v insert recv win %v %v before %v", fm.debugid, rf.Id, len(rf.Data.Data), f.Id)
-			return true
-		}
-	}
+	fm.recvwin.Set(rf.Id, rf)
 
-	fm.recvwin.PushBack(rf)
-	//loggo.Debug("debugid %v insert recv win last %v %v", fm.debugid, rf.Id, len(rf.Data.Data))
 	return true
 }
 
@@ -421,12 +413,13 @@ func (fm *FrameMgr) combineWindowToRecvBuffer(cur int64) {
 
 	for {
 		done := false
-		for e := fm.recvwin.Front(); e != nil; e = e.Next() {
-			f := e.Value.(*Frame)
+		unboundIterator := fm.recvwin.Iterator()
+		for unboundIterator.Next() {
+			f := unboundIterator.Value().(*Frame)
 			if f.Id == fm.recvid {
 				delete(fm.reqmap, f.Id)
 				if fm.processRecvFrame(f) {
-					fm.recvwin.Remove(e)
+					fm.recvwin.Delete(f.Id)
 					done = true
 					//loggo.Debug("debugid %v process recv frame ok %v %v", fm.debugid, f.Id, len(f.Data.Data))
 					break
@@ -445,10 +438,10 @@ func (fm *FrameMgr) combineWindowToRecvBuffer(cur int64) {
 	}
 
 	reqtmp := make(map[int32]int)
-	e := fm.recvwin.Front()
+	e := fm.recvwin.Iterator()
 	id := fm.recvid
 	for len(reqtmp) < int(fm.windowsize) && len(reqtmp)*4 < fm.frame_max_size/2 && e != nil {
-		f := e.Value.(*Frame)
+		f := e.Value().(*Frame)
 		//loggo.Debug("debugid %v start add req id %v %v %v", fm.debugid, fm.recvid, f.Id, id)
 		if f.Id != id {
 			oldReq := fm.reqmap[f.Id]
@@ -458,7 +451,9 @@ func (fm *FrameMgr) combineWindowToRecvBuffer(cur int64) {
 				//loggo.Debug("debugid %v add req id %v ", fm.debugid, id)
 			}
 		} else {
-			e = e.Next()
+			if !e.Next() {
+				e = nil
+			}
 		}
 
 		id++

@@ -439,6 +439,9 @@ func (fm *FrameMgr) combineWindowToRecvBuffer(cur int64) {
 
 	reqtmp := make(map[int32]int)
 	e := fm.recvwin.Iterator()
+	if !e.Next() {
+		e = nil
+	}
 	id := fm.recvid
 	for len(reqtmp) < int(fm.windowsize) && len(reqtmp)*4 < fm.frame_max_size/2 && e != nil {
 		f := e.Value().(*Frame)

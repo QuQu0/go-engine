@@ -222,7 +222,7 @@ func (fm *FrameMgr) calSendList(cur int64) {
 	for e := fm.sendwin.Front(); e != nil; e = e.Next() {
 		f := e.Value.(*Frame)
 		if (f.Resend || cur-f.Sendtime > int64(fm.resend_timems*(int)(time.Millisecond))) &&
-			cur-f.Sendtime > fm.rttns {
+			cur-f.Sendtime > fm.rttns+int64(time.Millisecond*10) {
 			f.Sendtime = cur
 			fm.sendlist.PushBack(f)
 			f.Resend = false
@@ -452,7 +452,7 @@ func (fm *FrameMgr) combineWindowToRecvBuffer(cur int64) {
 		//loggo.Debug("debugid %v start add req id %v %v %v", fm.debugid, fm.recvid, f.Id, id)
 		if f.Id != id {
 			oldReq := fm.reqmap[f.Id]
-			if cur-oldReq > fm.rttns*100 {
+			if cur-oldReq > fm.rttns {
 				reqtmp[id]++
 				fm.reqmap[f.Id] = cur
 				//loggo.Debug("debugid %v add req id %v ", fm.debugid, id)

@@ -72,6 +72,8 @@ type ServerConn struct {
 	tcpmode        int
 	echoId         int
 	echoSeq        int
+	serversend     int
+	serversendlast int
 }
 
 func (p *Server) Run() error {
@@ -97,6 +99,7 @@ func (p *Server) Run() error {
 			p.checkTimeoutConn()
 			p.showNet()
 			p.updateConnError()
+			p.updateConnServerSend()
 			time.Sleep(time.Second)
 		}
 	}()
@@ -141,7 +144,7 @@ func (p *Server) processPacket(packet *Packet) {
 		sendICMP(packet.echoId, packet.echoSeq, *p.conn, packet.src, "", "", (uint32)(MyMsg_PING), packet.my.Data,
 			(int)(packet.my.Rproto), -1, p.key,
 			0, 0, 0, 0, 0, 0,
-			0)
+			0, 0)
 		return
 	}
 
@@ -238,6 +241,9 @@ func (p *Server) processDataPacket(packet *Packet) {
 	id := packet.my.Id
 	localConn := p.getServerConnById(id)
 	if localConn == nil {
+		if packet.my.Type == (int32)(MyMsg_CATCH) {
+			return
+		}
 		localConn = p.processDataPacketNewConn(id, packet)
 		if localConn == nil {
 			return
@@ -247,6 +253,10 @@ func (p *Server) processDataPacket(packet *Packet) {
 	localConn.activeRecvTime = now
 	localConn.echoId = packet.echoId
 	localConn.echoSeq = packet.echoSeq
+
+	if packet.my.Type == (int32)(MyMsg_CATCH) {
+		return
+	}
 
 	if packet.my.Type == (int32)(MyMsg_DATA) {
 
@@ -300,7 +310,8 @@ func (p *Server) RecvTCP(conn *ServerConn, id string, src *net.IPAddr) {
 			sendICMP(conn.echoId, conn.echoSeq, *p.conn, src, "", id, (uint32)(MyMsg_DATA), mb,
 				conn.rproto, -1, p.key,
 				0, 0, 0, 0, 0, 0,
-				0)
+				0, conn.serversend)
+			conn.serversendlast++
 			p.sendPacket++
 			p.sendPacketSize += (uint64)(len(mb))
 		}
@@ -363,7 +374,8 @@ func (p *Server) RecvTCP(conn *ServerConn, id string, src *net.IPAddr) {
 				sendICMP(conn.echoId, conn.echoSeq, *p.conn, src, "", id, (uint32)(MyMsg_DATA), mb,
 					conn.rproto, -1, p.key,
 					0, 0, 0, 0, 0, 0,
-					0)
+					0, conn.serversend)
+				conn.serversendlast++
 				p.sendPacket++
 				p.sendPacketSize += (uint64)(len(mb))
 			}
@@ -425,7 +437,8 @@ func (p *Server) RecvTCP(conn *ServerConn, id string, src *net.IPAddr) {
 			sendICMP(conn.echoId, conn.echoSeq, *p.conn, src, "", id, (uint32)(MyMsg_DATA), mb,
 				conn.rproto, -1, p.key,
 				0, 0, 0, 0, 0, 0,
-				0)
+				0, conn.serversend)
+			conn.serversendlast++
 			p.sendPacket++
 			p.sendPacketSize += (uint64)(len(mb))
 		}
@@ -492,7 +505,8 @@ func (p *Server) Recv(conn *ServerConn, id string, src *net.IPAddr) {
 		sendICMP(conn.echoId, conn.echoSeq, *p.conn, src, "", id, (uint32)(MyMsg_DATA), bytes[:n],
 			conn.rproto, -1, p.key,
 			0, 0, 0, 0, 0, 0,
-			0)
+			0, conn.serversend)
+		conn.serversendlast++
 
 		p.sendPacket++
 		p.sendPacketSize += (uint64)(n)
@@ -579,7 +593,7 @@ func (p *Server) remoteError(echoId int, echoSeq int, uuid string, rprpto int, s
 	sendICMP(echoId, echoSeq, *p.conn, src, "", uuid, (uint32)(MyMsg_KICK), []byte{},
 		rprpto, -1, p.key,
 		0, 0, 0, 0, 0, 0,
-		0)
+		0, 0)
 }
 
 func (p *Server) addConnError(addr string) {
@@ -593,6 +607,15 @@ func (p *Server) addConnError(addr string) {
 func (p *Server) isConnError(addr string) bool {
 	_, ok := p.connErrorMap.Load(addr)
 	return ok
+}
+
+func (p *Server) updateConnServerSend() {
+	p.localConnMap.Range(func(key, value interface{}) bool {
+		serverConn := value.(*ServerConn)
+		serverConn.serversend = serverConn.serversendlast
+		serverConn.serversendlast = 0
+		return true
+	})
 }
 
 func (p *Server) updateConnError() {

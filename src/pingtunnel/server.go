@@ -50,6 +50,7 @@ type Server struct {
 	recvPacket       uint64
 	sendPacketSize   uint64
 	recvPacketSize   uint64
+	recvCatchPacket  uint64
 	localConnMapSize int
 
 	processtp   *threadpool.ThreadPool
@@ -255,6 +256,7 @@ func (p *Server) processDataPacket(packet *Packet) {
 	localConn.echoSeq = packet.echoSeq
 
 	if packet.my.Type == (int32)(MyMsg_CATCH) {
+		p.recvCatchPacket++
 		return
 	}
 
@@ -565,12 +567,13 @@ func (p *Server) showNet() {
 		p.localConnMapSize++
 		return true
 	})
-	loggo.Info("send %dPacket/s %dKB/s recv %dPacket/s %dKB/s %dConnections",
-		p.sendPacket, p.sendPacketSize/1024, p.recvPacket, p.recvPacketSize/1024, p.localConnMapSize)
+	loggo.Info("send %dPacket/s %dKB/s recv %dPacket/s %dKB/s %dConnections catch %dPacket/s",
+		p.sendPacket, p.sendPacketSize/1024, p.recvPacket, p.recvPacketSize/1024, p.localConnMapSize, p.recvCatchPacket)
 	p.sendPacket = 0
 	p.recvPacket = 0
 	p.sendPacketSize = 0
 	p.recvPacketSize = 0
+	p.recvCatchPacket = 0
 }
 
 func (p *Server) addServerConn(uuid string, serverConn *ServerConn) {

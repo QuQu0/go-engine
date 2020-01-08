@@ -113,6 +113,7 @@ type Client struct {
 	recvPacket             uint64
 	sendPacketSize         uint64
 	recvPacketSize         uint64
+	sendCatchPacket        uint64
 	localAddrToConnMapSize int
 	localIdToConnMapSize   int
 
@@ -333,11 +334,11 @@ func (p *Client) AcceptTcpConn(conn *net.TCPConn, targetAddr string) {
 		for e := sendlist.Front(); e != nil; e = e.Next() {
 			f := e.Value.(*frame.Frame)
 			mb, _ := clientConn.fm.MarshalFrame(f)
-			p.sequence++
 			sendICMP(p.id, p.sequence, *p.conn, p.ipaddrServer, targetAddr, clientConn.id, (uint32)(MyMsg_DATA), mb,
 				SEND_PROTO, RECV_PROTO, p.key,
 				p.tcpmode, p.tcpmode_buffersize, p.tcpmode_maxwin, p.tcpmode_resend_timems, p.tcpmode_compress, p.tcpmode_stat,
 				p.timeout, 0)
+			p.sequence++
 			p.sendPacket++
 			p.sendPacketSize += (uint64)(len(mb))
 		}
@@ -396,11 +397,11 @@ func (p *Client) AcceptTcpConn(conn *net.TCPConn, targetAddr string) {
 					loggo.Error("Error tcp Marshal %s %s %s", uuid, tcpsrcaddr.String(), err)
 					continue
 				}
-				p.sequence++
 				sendICMP(p.id, p.sequence, *p.conn, p.ipaddrServer, targetAddr, clientConn.id, (uint32)(MyMsg_DATA), mb,
 					SEND_PROTO, RECV_PROTO, p.key,
 					p.tcpmode, 0, 0, 0, 0, 0,
 					0, 0)
+				p.sequence++
 				p.sendPacket++
 				p.sendPacketSize += (uint64)(len(mb))
 			}
@@ -459,11 +460,11 @@ func (p *Client) AcceptTcpConn(conn *net.TCPConn, targetAddr string) {
 		for e := sendlist.Front(); e != nil; e = e.Next() {
 			f := e.Value.(*frame.Frame)
 			mb, _ := clientConn.fm.MarshalFrame(f)
-			p.sequence++
 			sendICMP(p.id, p.sequence, *p.conn, p.ipaddrServer, targetAddr, clientConn.id, (uint32)(MyMsg_DATA), mb,
 				SEND_PROTO, RECV_PROTO, p.key,
 				p.tcpmode, 0, 0, 0, 0, 0,
 				0, 0)
+			p.sequence++
 			p.sendPacket++
 			p.sendPacketSize += (uint64)(len(mb))
 		}
@@ -542,7 +543,6 @@ func (p *Client) Accept() error {
 			SEND_PROTO, RECV_PROTO, p.key,
 			p.tcpmode, 0, 0, 0, 0, 0,
 			p.timeout, 0)
-
 		p.sequence++
 
 		p.sendPacket++
@@ -564,10 +564,12 @@ func (p *Client) Catch() {
 				diff := clientConn.serversend - clientConn.clientrecv
 				diff /= 5
 
-				sendICMP(p.id, p.sequence, *p.conn, p.ipaddrServer, p.targetAddr, clientConn.id, (uint32)(MyMsg_DATA), nil,
+				sendICMP(p.id, p.sequence, *p.conn, p.ipaddrServer, p.targetAddr, clientConn.id, (uint32)(MyMsg_CATCH), nil,
 					SEND_PROTO, RECV_PROTO, p.key,
 					0, 0, 0, 0, 0, 0,
 					0, 0)
+				p.sequence++
+				p.sendCatchPacket++
 			}
 			return true
 		})
@@ -697,8 +699,8 @@ func (p *Client) ping() {
 		SEND_PROTO, RECV_PROTO, p.key,
 		0, 0, 0, 0, 0, 0,
 		0, 0)
-	loggo.Info("ping %s %s %d %d %d %d", p.addrServer, now.String(), p.sproto, p.rproto, p.id, p.sequence)
 	p.sequence++
+	loggo.Info("ping %s %s %d %d %d %d", p.addrServer, now.String(), p.sproto, p.rproto, p.id, p.sequence)
 	if now.Sub(p.pongTime) > time.Second*3 {
 		p.rtt = 0
 	}
@@ -715,12 +717,13 @@ func (p *Client) showNet() {
 		p.localIdToConnMapSize++
 		return true
 	})
-	loggo.Info("send %dPacket/s %dKB/s recv %dPacket/s %dKB/s %d/%dConnections",
-		p.sendPacket, p.sendPacketSize/1024, p.recvPacket, p.recvPacketSize/1024, p.localAddrToConnMapSize, p.localIdToConnMapSize)
+	loggo.Info("send %dPacket/s %dKB/s recv %dPacket/s %dKB/s %d/%dConnections catch %dPacket/s",
+		p.sendPacket, p.sendPacketSize/1024, p.recvPacket, p.recvPacketSize/1024, p.localAddrToConnMapSize, p.localIdToConnMapSize, p.sendCatchPacket)
 	p.sendPacket = 0
 	p.recvPacket = 0
 	p.sendPacketSize = 0
 	p.recvPacketSize = 0
+	p.sendCatchPacket = 0
 }
 
 func (p *Client) AcceptSock5Conn(conn *net.TCPConn) {
@@ -797,6 +800,7 @@ func (p *Client) remoteError(uuid string) {
 		SEND_PROTO, RECV_PROTO, p.key,
 		0, 0, 0, 0, 0, 0,
 		0, 0)
+	p.sequence++
 }
 
 func (p *Client) AcceptDirectTcpConn(conn *net.TCPConn, targetAddr string) {
